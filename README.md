@@ -18,5 +18,5 @@ HASH_N_BUCKETS以及HASH_N_LIST来分别定义hash桶的个数以及桶的深度
 运行：
 	sudo ./mmap_write  -- 写hash表
 	sudo ./mmap_read   -- 读hash表
-	由于是文件映射至内存，及时write先退出了，数据依然保存在文件，read后运行也可以读取到数据
+	由于是文件映射至内存，即使write先退出了，数据依然保存在文件，read后运行也可以读取到数据
 
