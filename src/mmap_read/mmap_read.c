@@ -30,25 +30,22 @@ int main(void)
 		return -1;
 	}
 
-	int ret;
-	ret = hash_lookup(login_hash, "zhangsan");
-	if (ret > 0)
-	{
-		printf("key zhangsan found, value is %d \n", ret);
-	}
+	struct hash_element *he = NULL;
+	he = hash_lookup(login_hash, "zhangsan");
+	if (he != NULL)
+		printf("key 'zhangsan' found, value is %d \n", he->value);
 	else 
-	{
-		printf("key zhangsan dosen't found\n");
-	}
-	ret = hash_lookup(login_hash, "lisi");
-	if (ret > 0)
-	{
-		printf("key lisi found, value is %d \n", ret);
-	}
+		printf("key 'zhangsan' dosen't found\n");
+	he = hash_lookup(login_hash, "lisi");
+	if (he != NULL)
+		printf("key 'lisi' found, value is %d \n", he->value);
 	else
-	{
-		printf("key lisi doesn't found\n");
-	}
+		printf("key 'lisi' doesn't found\n");
+    he = hash_lookup(login_hash, "wangermazi");
+	if (he != NULL)
+		printf("key 'wangermazi' found, value is %d \n", he->value);
+	else
+		printf("key 'wangermazi' doesn't found\n");
 
 	return 0;
 }

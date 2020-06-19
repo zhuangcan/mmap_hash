@@ -191,84 +191,119 @@ hash_value(const struct hash *hash, const void *key)
     return general_hash_function(key, hash->iv);
 }
 
-struct hash_element *
-hash_lookup_fast(struct hash *hash,
-                 struct hash_bucket *bucket,
-                 const void *key,
-                 uint32_t hv)
+/* Calc the secondary hash value from the primary hash value of a given key */
+uint32_t
+secondary_hash_value(const uint32_t primary_hash)
 {
-    struct hash_element *he;
+	static const unsigned all_bits_shift = 12;
+	static const unsigned alt_bits_xor = 0x5bd1e995;
 
-    int i = 0;
-    while (i < HASH_N_LIST)
+	uint32_t tag = primary_hash >> all_bits_shift;
+
+	return primary_hash ^ ((tag + 1) * alt_bits_xor);
+}
+
+struct hash_element *
+hash_secondary_lookup_iter(struct hash *h, uint32_t sig, const void *key)
+{
+    struct hash_bucket *sec_bkt;
+    struct hash_element *he;
+    int i;
+
+    sec_bkt = &h->buckets[sig & (HASH_NUM_BUCKETS - 1)];
+    for (i = 0; i < HASH_BUCKET_ENTRIES; i++)
     {
-        he = &bucket->list[i];
-        if (he->hash_value == hv && general_compare_function(key, he->key))
+        he = &sec_bkt->list[i];
+        if (he->hash_value == sig && general_compare_function(key, he->key))
         {
             return he;
         }
-        i++;
     }
- 
+
+    return NULL;
+
+}
+
+struct hash_element *
+hash_secondary_lookup(struct hash *h, const void *key)
+{
+    struct hash_element *he = NULL;
+    uint32_t sig_alt;
+    int i = 0;
+
+    sig_alt = hash_value(h, key);
+    for (i = 0; i < HASH_NUM_BUCKETS; i++)
+    {        
+        he = hash_secondary_lookup_iter(h, sig_alt, key);
+        if (he != NULL)
+        {
+            return he;
+        }
+        sig_alt = secondary_hash_value(sig_alt);
+    }
+
     return NULL;
 }
 
-int
-hash_lookup(struct hash *hash, const void *key)
+struct hash_element *
+hash_lookup(struct hash *h, const void *key)
 {
-    int ret = -1;
-    struct hash_element *he;
-    uint32_t hv = hash_value(hash, key);
-    struct hash_bucket *bucket = &hash->buckets[hv & (HASH_N_BUCKETS - 1)];
-
-    he = hash_lookup_fast(hash, bucket, key, hv);
-    if (he)
-    {
-        ret = he->value;
-    }
-
-    return ret;
-}
-
-/* NOTE: assumes that key is not a duplicate */
-static inline void
-hash_add_fast(struct hash *hash,
-              struct hash_bucket *bucket,
-              const void *key,
-              uint32_t hv,
-              int value)
-{
-    int i = 0;
-    struct hash_element *he;
-    while(i < HASH_N_LIST)
-    {
-        he = &bucket->list[i];
-        if (he->flag != HASH_ELEMENT_UESED)
-        {
-            he->value = value;
-            strcpy(he->key, key);
-            he->hash_value = hv;
-            he->flag = HASH_ELEMENT_UESED;
-            return;
-        }
-        i++;
-    }
-    
-    return;
+    return hash_secondary_lookup(h, key);
 }
 
 bool
-hash_add(struct hash *hash, const void *key, int value, bool replace)
+hash_secondary_add_iter(struct hash *h, uint32_t sig, const void *key, int value)
 {
-    uint32_t hv;
-    struct hash_bucket *bucket;
+    struct hash_bucket *sec_bkt;
     struct hash_element *he;
+    int i;
+
+    sec_bkt = &h->buckets[sig & (HASH_NUM_BUCKETS - 1)];
+    for (i = 0; i < HASH_BUCKET_ENTRIES; i++)
+    {
+        he = &sec_bkt->list[i];
+        if (he->flag == HASH_ELEMENT_FREE)
+        {
+            he->value = value;
+            strcpy(he->key, key);
+            he->hash_value = sig;
+            he->flag = HASH_ELEMENT_UESED;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool
+hash_secondary_add(struct hash *h, const void *key, int value)
+{
+    uint32_t sig_alt;
     bool ret = false;
+    int i = 0;
 
-    hv = hash_value(hash, key);
-    bucket = &hash->buckets[hv & (HASH_N_BUCKETS - 1)];
+    sig_alt = hash_value(h, key);
+    for (i = 0; i < HASH_NUM_BUCKETS; i++)
+    {
+        ret = hash_secondary_add_iter(h, sig_alt, key, value);
+        if (ret == true)
+        {
+            return true;
+        }
+        sig_alt = secondary_hash_value(sig_alt);
+    }
 
-    if ((he = hash_lookup_fast(hash, bucket, key, hv))) /* already exists? */
+    return false;
+}
+
+bool
+hash_add(struct hash *h, const void *key, int value, bool replace)
+{
+    bool ret = false;
+    struct hash_element *he;
+
+    /* 先查是否已有表项 */
+    if (he = hash_lookup(h, key))
     {
         if (replace)
         {
@@ -278,48 +313,29 @@ hash_add(struct hash *hash, const void *key, int value, bool replace)
     }
     else
     {
-        hash_add_fast(hash, bucket, key, hv, value);
+        ret = hash_secondary_add(h, key, value);
+    }
+
+    return ret;    
+}
+
+bool
+hash_remove(struct hash *h, const void *key)
+{    
+    bool ret = false;   
+
+    struct hash_element *he = hash_lookup(h, key);
+    if (he != NULL)
+    {
+        he->flag = HASH_ELEMENT_FREE;
+        memset(he->key, 0, HASH_KEY_LEN);
+        he->value = 0;
+        he->hash_value = 0;
         ret = true;
     }
 
     return ret;
 }
 
-static inline bool
-hash_remove_fast(struct hash *hash,
-                 struct hash_bucket *bucket,
-                 const void *key,
-                 uint32_t hv)
-{
-    int i = 0;
-    struct hash_element *he;
-    while(i < HASH_N_LIST)
-    {
-        he = &bucket->list[i];
-        if (hv == he->hash_value && general_compare_function(key, he->key))
-        {
-            he->flag = HASH_ELEMENT_FREE;
-            memset(he->key, 0, HASH_KEY_LEN);
-            he->value = 0;
-            he->hash_value = 0;
-            return true;
-        }
-        i++;
-    }
 
-    return false;
-}
-
-bool
-hash_remove(struct hash *hash, const void *key)
-{
-    uint32_t hv;
-    struct hash_bucket *bucket;
-    bool ret;
-
-    hv = hash_value(hash, key);
-    bucket = &hash->buckets[hv & (HASH_N_BUCKETS - 1)];
-    ret = hash_remove_fast(hash, bucket, key, hv);
-    return ret;
-}
 

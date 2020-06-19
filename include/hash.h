@@ -1,16 +1,12 @@
 #ifndef __HASH_H__
 #define __HASH_H__
 /*
- * This code is a fairly straightforward hash
- * table implementation using Bob Jenkins'
- * hash function.
- *
- * Hash tables are used in OpenVPN to keep track of
- * client instances over various key spaces.
+ * notice that the max items should be HASH_NUM_BUCKETS * HASH_BUCKET_ENTRIES,
+ * but we can not ensure reach the 100% usage.
  */
-#define HASH_N_BUCKETS      256
-#define HASH_N_LIST         256
-#define HASH_KEY_LEN        64
+#define HASH_NUM_BUCKETS        ((1 << 16) >> 3)
+#define HASH_BUCKET_ENTRIES     (1 << 3)
+#define HASH_KEY_LEN            64
 
 #define HASH_ELEMENT_UESED  0x5a5a3434
 #define HASH_ELEMENT_FREE   0
@@ -25,7 +21,7 @@ struct hash_element
 
 struct hash_bucket
 {
-    struct hash_element list[HASH_N_LIST];
+    struct hash_element list[HASH_BUCKET_ENTRIES];
 };
 
 struct hash
@@ -33,7 +29,7 @@ struct hash
     int n_buckets;
     int n_elements;
     uint32_t iv;
-    struct hash_bucket buckets[HASH_N_BUCKETS];
+    struct hash_bucket buckets[HASH_NUM_BUCKETS];
 };
 
 uint32_t
@@ -42,13 +38,13 @@ general_hash_function(const void *key, uint32_t iv);
 bool
 general_compare_function(const void *key1, const void *key2);
 
-int
-hash_lookup(struct hash *hash, const void *key);
+struct hash_element *
+hash_lookup(struct hash *h, const void *key);
 
 bool
-hash_add(struct hash *hash, const void *key, int value, bool replace);
+hash_add(struct hash *h, const void *key, int value, bool replace);
 
 bool
-hash_remove(struct hash *hash, const void *key);
+hash_remove(struct hash *h, const void *key);
 
 #endif /* __HASH_H__ */
