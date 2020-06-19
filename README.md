@@ -2,7 +2,9 @@
 
 这是一个适用于共享内存(mmap方式)的hash table。不同于general hash动态申请内存，理论上条目数无上限，mmap_hash需要修改
 
-HASH_N_BUCKETS以及HASH_N_LIST来分别定义hash桶的个数以及桶的深度。
+HASH_NUM_BUCKETS以及HASH_BUCKET_ENTRIES来分别定义hash桶的个数以及桶的深度。
+
+需要注意的是这两个参数必须是2的幂。
 
 这么做的原因是避免动态内存申请，否则无法获得连续的内存做映射。
 
